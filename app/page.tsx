@@ -1,49 +1,28 @@
 'use client'
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, User, LogOut, CreditCard, Loader2 } from 'lucide-react';
-import { useSession, signOut } from 'next-auth/react';
-import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import SearchFilter from '@/components/SearchFilter';
-import { filterProducts } from '@/lib/searchUtils';
-import { Product, FilterState, CategoryIconMap } from '@/lib/types';
 
-// レビュー型定義
-interface Review {
-  id: string;
-  userId: string;
-  userName: string;
-  rating: number;
-  comment: string;
-  createdAt: string;
-  toolId: string;
-  verified: boolean;
-  helpful: number;
-}
-
-// Supabaseツール型定義
-interface SupabaseTool {
-  id: string;
-  title: string;
-  description: string;
-  price: number;
-  category: string;
-  tags: string[] | null;
-  created_at: string;
-  creator: string;
-  status: string;
-  endpoint_url: string;
-  submitted_by: string;
+interface Product {
+  id: string | number
+  title: string
+  description: string
+  price: number
+  category: string
+  icon: string
+  rating: number
+  reviewCount: number
+  tags: string[]
+  createdAt: string
+  creator?: string
 }
 
 export default function HomePage() {
-  const { data: session, status } = useSession();
   const [cart, setCart] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
   const [showCart, setShowCart] = useState<boolean>(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [user, setUser] = useState<{name: string; email: string} | null>(null);
 
   // 静的なサンプル商品データ
   const defaultProducts: Product[] = [
@@ -123,135 +102,59 @@ export default function HomePage() {
 
   useEffect(() => {
     loadProducts();
+    loadUserFromStorage();
+    loadCartFromStorage();
   }, []);
 
-  // ヘルパー関数
-  const calculateAverageRating = (toolId: number | string, reviews: Review[]): number => {
-    const toolReviews = reviews.filter((review: Review) => review.toolId === toolId.toString());
-    if (toolReviews.length === 0) return 0;
-    const sum = toolReviews.reduce((acc: number, review: Review) => acc + review.rating, 0);
-    return Math.round((sum / toolReviews.length) * 10) / 10; // 小数点1桁
-  };
-
-  const getReviewCount = (toolId: number | string, reviews: Review[]): number => {
-    return reviews.filter((review: Review) => review.toolId === toolId.toString()).length;
-  };
-
-  // 🔥 Supabase対応: loadProducts関数を更新
   const loadProducts = async (): Promise<void> => {
     try {
-      console.log('=== ツール一覧データ読み込み開始 ===');
-      
-      // 🔥 重要: Supabaseから承認済みツールを取得
-      const { data: supabaseTools, error } = await supabase
-        .from('tools')
-        .select('*')
-        .eq('status', 'approved') // 承認済みのみ表示
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Supabaseツール取得エラー:', error);
-      }
-
-      // レビューデータを取得（localStorage）
-      const allReviews: Review[] = JSON.parse(localStorage.getItem('reviews') || '[]');
-      
-      // SupabaseツールをProduct形式に変換
-      const formattedSupabaseTools: Product[] = (supabaseTools || []).map((tool: SupabaseTool) => ({
-        id: tool.id, // 文字列IDをそのまま使用
-        title: tool.title,
-        description: tool.description,
-        price: tool.price,
-        category: tool.category,
-        icon: getCategoryIcon(tool.category),
-        rating: calculateAverageRating(tool.id, allReviews) || 5,
-        reviewCount: getReviewCount(tool.id, allReviews) || 0,
-        tags: tool.tags || [tool.category],
-        createdAt: tool.created_at,
-        creator: tool.creator
-      }));
-
-      // フォールバック: localStorageから承認済みツールを取得
-      const localApproved = JSON.parse(localStorage.getItem('approvedTools') || '[]');
-      const formattedLocalTools: Product[] = localApproved.map((tool: any, index: number) => ({
-        id: `local_${index}`, // ローカルツール用のID
-        title: tool.title,
-        description: tool.description,
-        price: tool.price,
-        category: tool.category,
-        icon: getCategoryIcon(tool.category),
-        rating: calculateAverageRating(tool.id, allReviews) || 5,
-        reviewCount: getReviewCount(tool.id, allReviews) || 0,
-        tags: tool.tags || [tool.category],
-        createdAt: tool.createdAt || new Date().toISOString(),
-        creator: tool.creator
-      }));
-
-      // デフォルト商品の評価更新
-      const updatedDefaultProducts: Product[] = defaultProducts.map((product: Product) => ({
-        ...product,
-        rating: calculateAverageRating(product.id, allReviews) || product.rating,
-        reviewCount: getReviewCount(product.id, allReviews) || product.reviewCount
-      }));
-
-      // 🔥 重要: データソースの優先順位
-      // 1. デフォルト商品（常に表示）
-      // 2. Supabaseから取得した承認済みツール
-      // 3. localStorageから取得した承認済みツール（フォールバック）
-      const allProductsData: Product[] = [
-        ...updatedDefaultProducts,
-        ...formattedSupabaseTools,
-        ...formattedLocalTools
-      ];
-
-      console.log('✅ データ読み込み完了:');
-      console.log('- デフォルト商品:', updatedDefaultProducts.length, '件');
-      console.log('- Supabaseツール:', formattedSupabaseTools.length, '件');
-      console.log('- ローカルツール:', formattedLocalTools.length, '件');
-      console.log('- 合計:', allProductsData.length, '件');
-
-      setAllProducts(allProductsData);
-      setFilteredProducts(allProductsData);
-
+      setAllProducts(defaultProducts);
     } catch (error) {
       console.error('商品読み込みエラー:', error);
-      
-      // エラー時のフォールバック: デフォルト商品のみ表示
-      const allReviews: Review[] = JSON.parse(localStorage.getItem('reviews') || '[]');
-      const updatedDefaultProducts: Product[] = defaultProducts.map((product: Product) => ({
-        ...product,
-        rating: calculateAverageRating(product.id, allReviews) || product.rating,
-        reviewCount: getReviewCount(product.id, allReviews) || product.reviewCount
-      }));
-      
-      setAllProducts(updatedDefaultProducts);
-      setFilteredProducts(updatedDefaultProducts);
+      setAllProducts(defaultProducts);
     } finally {
       setLoading(false);
     }
   };
 
-  const getCategoryIcon = (category: string): string => {
-    const iconMap: CategoryIconMap = {
-      '文章作成': '🧠',
-      'データ分析': '📊',
-      'デザイン': '🎨',
-      'チャットボット': '💬',
-      '教育': '📚',
-      'SEO': '🔍',
-      'テキスト処理': '📝',
-      '画像処理': '🖼️',
-      '機械学習': '🤖',
-      'API連携': '🔗',
-      'その他': '⚡'
-    };
-    return iconMap[category as keyof CategoryIconMap] || '🤖';
+  // ローカルストレージからユーザー情報を復元
+  const loadUserFromStorage = () => {
+    try {
+      const savedUser = localStorage.getItem('user');
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+        setIsLoggedIn(true);
+      }
+    } catch (error) {
+      console.error('ユーザー情報読み込みエラー:', error);
+    }
   };
 
-  // 検索・フィルター処理
-  const handleSearch = (filters: FilterState): void => {
-    const filtered = filterProducts(allProducts, filters);
-    setFilteredProducts(filtered);
+  // ローカルストレージからカートを復元
+  const loadCartFromStorage = () => {
+    try {
+      const savedCart = localStorage.getItem('cart');
+      if (savedCart) {
+        setCart(JSON.parse(savedCart));
+      }
+    } catch (error) {
+      console.error('カート情報読み込みエラー:', error);
+    }
+  };
+
+  // ログイン関数
+  const login = (userData: {name: string; email: string}) => {
+    setUser(userData);
+    setIsLoggedIn(true);
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+
+  // ログアウト関数
+  const logout = () => {
+    setUser(null);
+    setIsLoggedIn(false);
+    localStorage.removeItem('user');
+    alert('ログアウトしました');
   };
 
   const addToCart = (product: Product): void => {
@@ -260,50 +163,29 @@ export default function HomePage() {
       alert('既にカートに追加されています');
       return;
     }
-    setCart(prevCart => [...prevCart, product]);
+    
+    const updatedCart = [...cart, product];
+    setCart(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
     alert(`${product.title}をカートに追加しました！`);
   };
 
   const removeFromCart = (productId: number | string): void => {
-    setCart(prevCart => prevCart.filter((item: Product) => item.id !== productId));
+    const updatedCart = cart.filter((item: Product) => item.id !== productId);
+    setCart(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
+    alert('商品をカートから削除しました');
   };
 
-  const handleCheckout = async (): Promise<void> => {
-    if (!session) {
-      alert('購入するにはログインが必要です');
-      return;
-    }
-
-    if (cart.length === 0) {
-      alert('カートが空です');
-      return;
-    }
-
-    setCheckoutLoading(true);
-
-    try {
-      const response = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cart }),
-      });
-
-      if (!response.ok) throw new Error('決済処理でエラーが発生しました');
-
-      const { url }: { url: string } = await response.json();
-      if (url) {
-        localStorage.setItem('cart', JSON.stringify(cart));
-        window.location.href = url;
-      }
-    } catch (error) {
-      console.error('Checkout error:', error);
-      alert('決済処理でエラーが発生しました。もう一度お試しください。');
-    } finally {
-      setCheckoutLoading(false);
+  const clearCart = (): void => {
+    const confirmed = window.confirm('カートをすべて空にしますか？');
+    if (confirmed) {
+      setCart([]);
+      localStorage.removeItem('cart');
+      alert('カートを空にしました');
     }
   };
 
-  const isAdmin = session?.user?.name === 'admin' || session?.user?.name === '管理者';
   const cartTotal = cart.reduce((sum: number, item: Product) => sum + item.price, 0);
 
   if (loading) {
@@ -311,7 +193,7 @@ export default function HomePage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <div className="text-xl">Supabaseからデータを読み込み中...</div>
+          <div className="text-xl">データを読み込み中...</div>
         </div>
       </div>
     );
@@ -323,7 +205,7 @@ export default function HomePage() {
       <header className="bg-blue-600 text-white p-4 sticky top-0 z-50 shadow-lg">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <Link href="/" className="text-2xl font-bold hover:text-blue-200 transition-colors">
-            🤖 AI Marketplace
+            🤖 AI Marketplace Pro
           </Link>
           
           {/* ナビゲーション */}
@@ -334,17 +216,9 @@ export default function HomePage() {
             <Link href="/sell" className="hover:bg-blue-700 px-3 py-2 rounded transition-colors">
               出品する
             </Link>
-            {session && (
-              <Link href="/dashboard" className="hover:bg-blue-700 px-3 py-2 rounded transition-colors">
-                ダッシュボード
-              </Link>
-            )}
-            {/* 管理者リンク */}
-            {session && isAdmin && (
-              <Link href="/admin" className="hover:bg-red-700 px-3 py-2 rounded transition-colors bg-red-500">
-                管理画面
-              </Link>
-            )}
+            <Link href="/dashboard" className="hover:bg-blue-700 px-3 py-2 rounded transition-colors">
+              ダッシュボード
+            </Link>
           </nav>
 
           <div className="flex items-center gap-4">
@@ -354,7 +228,7 @@ export default function HomePage() {
                 onClick={() => setShowCart(!showCart)}
                 className="flex items-center gap-2 hover:text-blue-200 transition-colors"
               >
-                <ShoppingCart size={24} />
+                🛒
                 {cart.length > 0 && (
                   <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
                     {cart.length}
@@ -363,33 +237,31 @@ export default function HomePage() {
               </button>
             </div>
             
-            {/* 認証状態 */}
-            {status === 'loading' ? (
-              <div className="text-sm">読み込み中...</div>
-            ) : session ? (
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-800 rounded-full flex items-center justify-center">
-                  <User size={20} />
-                </div>
-                <span className="hidden md:block">{session.user?.name}</span>
-                {isAdmin && (
-                  <span className="bg-red-500 px-2 py-1 rounded text-xs">管理者</span>
-                )}
-                <button 
-                  onClick={() => signOut()}
-                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-1"
+            {/* ログイン/ログアウト */}
+            {isLoggedIn ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm hidden md:block">こんにちは、{user?.name}さん</span>
+                <button
+                  onClick={logout}
+                  className="bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600 transition-colors text-sm"
                 >
-                  <LogOut size={16} />
                   ログアウト
                 </button>
               </div>
             ) : (
-              <Link 
-                href="/login"
+              <button
+                onClick={() => {
+                  const name = prompt('お名前を入力してください:');
+                  const email = prompt('メールアドレスを入力してください:');
+                  if (name && email) {
+                    login({name, email});
+                    alert(`ようこそ、${name}さん！`);
+                  }
+                }}
                 className="bg-white text-blue-600 px-4 py-2 rounded hover:bg-gray-100 transition-colors font-medium"
               >
                 ログイン
-              </Link>
+              </button>
             )}
           </div>
         </div>
@@ -427,7 +299,7 @@ export default function HomePage() {
                       </div>
                       <button
                         onClick={() => removeFromCart(item.id)}
-                        className="text-red-600 hover:text-red-800 text-xs"
+                        className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600 transition-colors"
                       >
                         削除
                       </button>
@@ -436,40 +308,26 @@ export default function HomePage() {
                 </div>
                 
                 <div className="border-t pt-3">
+                  {cart.length > 1 && (
+                    <button
+                      onClick={clearCart}
+                      className="w-full bg-gray-500 text-white py-1 rounded text-xs hover:bg-gray-600 transition-colors mb-2"
+                    >
+                      カートを空にする
+                    </button>
+                  )}
                   <div className="flex justify-between items-center mb-3">
                     <span className="font-bold">合計:</span>
                     <span className="text-lg font-bold text-blue-600">¥{cartTotal.toLocaleString()}</span>
                   </div>
-                  <button
-                    onClick={handleCheckout}
-                    disabled={checkoutLoading}
-                    className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {checkoutLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        処理中...
-                      </>
-                    ) : (
-                      <>
-                        <CreditCard className="w-4 h-4" />
-                        購入手続きへ
-                      </>
-                    )}
+                  <button className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors flex items-center justify-center gap-2">
+                    💳 購入手続きへ
                   </button>
                 </div>
               </>
             )}
           </div>
         </div>
-      )}
-
-      {/* オーバーレイ */}
-      {showCart && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-25 z-30"
-          onClick={() => setShowCart(false)}
-        />
       )}
 
       {/* メイン画面 */}
@@ -482,108 +340,97 @@ export default function HomePage() {
           <p className="text-gray-600 text-lg mb-8">
             便利なAIツールを見つけて購入、または自分のツールを販売
           </p>
+          
+          {isLoggedIn && (
+            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded-lg inline-block mb-4">
+              👋 ようこそ、{user?.name}さん！
+            </div>
+          )}
         </div>
-
-        {/* 検索・フィルターセクション */}
-        <SearchFilter
-          onSearch={handleSearch}
-          totalProducts={allProducts.length}
-          filteredCount={filteredProducts.length}
-        />
 
         {/* 商品一覧 */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-800">
-              AIツール ({filteredProducts.length}件)
+              AIツール ({allProducts.length}件)
             </h2>
-            {/* Supabase接続状態表示 */}
             <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
-              📡 Supabase連携中
+              📡 Vercel運営中
             </div>
           </div>
 
-          {filteredProducts.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <div className="text-6xl mb-4">🔍</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">検索結果が見つかりません</h3>
-              <p className="text-gray-600">
-                検索条件を変更して再度お試しください
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProducts.map((product: Product) => {
-                const isInCart = cart.some((item: Product) => item.id === product.id);
-                return (
-                  <div key={product.id} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 p-6 border border-gray-100">
-                    <div className="text-4xl mb-4 text-center bg-gray-50 rounded-lg py-8">
-                      {product.icon}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {allProducts.map((product: Product) => {
+              const isInCart = cart.some((item: Product) => item.id === product.id);
+              return (
+                <div key={product.id} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 p-6 border border-gray-100">
+                  <div className="text-4xl mb-4 text-center bg-gray-50 rounded-lg py-8">
+                    {product.icon}
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <h3 className="text-xl font-bold text-gray-800">
+                      {product.title}
+                    </h3>
+                    
+                    <p className="text-gray-600 text-sm">{product.description}</p>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                        {product.category}
+                      </span>
+                      {product.tags.slice(0, 2).map((tag: string, index: number) => (
+                        <span key={index} className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
+                          {tag}
+                        </span>
+                      ))}
                     </div>
                     
-                    <div className="space-y-3">
-                      {/* 商品タイトル（リンク付き） */}
-                      <Link href={`/tools/${product.id}`}>
-                        <h3 className="text-xl font-bold text-gray-800 line-clamp-2 hover:text-blue-600 cursor-pointer transition-colors">
-                          {product.title}
-                        </h3>
-                      </Link>
-                      
-                      <p className="text-gray-600 text-sm line-clamp-3">{product.description}</p>
-                      
-                      <div className="flex flex-wrap gap-2">
-                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                          {product.category}
-                        </span>
-                        {product.tags && product.tags.slice(0, 2).map((tag: string, index: number) => (
-                          <span key={index} className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                      
-                      {product.rating && product.rating > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-yellow-400">
-                            {'★'.repeat(Math.floor(product.rating))}{'☆'.repeat(5-Math.floor(product.rating))}
-                          </span>
-                          <span className="text-sm text-gray-600">
-                            {product.rating.toFixed(1)} ({product.reviewCount})
-                          </span>
-                        </div>
-                      )}
-                      
-                      <div className="flex justify-between items-center pt-3 border-t gap-2">
-                        <span className="text-2xl font-bold text-blue-600">
-                          ¥{product.price.toLocaleString()}
-                        </span>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => addToCart(product)}
-                            disabled={isInCart}
-                            className={`px-3 py-2 rounded-lg font-medium transition-all duration-200 ${
-                              isInCart 
-                                ? 'bg-green-500 text-white cursor-not-allowed' 
-                                : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
-                            }`}
-                          >
-                            {isInCart ? '✓ 追加済み' : 'カートに追加'}
-                          </button>
-                          <Link
-                            href={`/tools/${product.id}`}
-                            className="px-3 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-                          >
-                            詳細
-                          </Link>
-                        </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-yellow-400">
+                        {'★'.repeat(Math.floor(product.rating))}{'☆'.repeat(5-Math.floor(product.rating))}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        {product.rating.toFixed(1)} ({product.reviewCount})
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center pt-3 border-t gap-2">
+                      <span className="text-2xl font-bold text-blue-600">
+                        ¥{product.price.toLocaleString()}
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => addToCart(product)}
+                          disabled={isInCart}
+                          className={`px-3 py-2 rounded-lg font-medium transition-all duration-200 ${
+                            isInCart 
+                              ? 'bg-green-500 text-white cursor-not-allowed' 
+                              : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
+                          }`}
+                        >
+                          {isInCart ? '✓ 追加済み' : 'カートに追加'}
+                        </button>
+                        <button className="px-3 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                          詳細
+                        </button>
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+
+        {/* フッター */}
+        <footer className="text-center py-8 border-t">
+          <div className="bg-blue-100 border border-blue-400 text-blue-700 px-6 py-4 rounded-lg inline-block">
+            <strong>🎉 AI Marketplace Pro 運営中！</strong>
+            <br />
+            Vercelで安定稼働・カート機能・ユーザー管理完備
+          </div>
+        </footer>
       </main>
     </div>
   );
