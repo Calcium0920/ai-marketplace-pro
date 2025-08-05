@@ -1,18 +1,11 @@
-/** @type {import('next').NextConfig} */
+﻿/** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   images: {
-    domains: ['localhost', 'vercel.app'],
+    domains: ['lh3.googleusercontent.com', 'avatars.githubusercontent.com'],
   },
-  env: {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
-    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
+  experimental: {
+    appDir: true,
   },
-};
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig
