@@ -1,371 +1,610 @@
 'use client'
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { Product, Order } from '@/lib/types';
+import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { TrendingUp, Package, CreditCard, Star, Calendar, Eye, Edit, Trash2, Plus, User } from 'lucide-react'
+
+// Tool型を定義
+interface Tool {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  category: string;
+  creator: string;
+  createdAt: string;
+  endpointUrl: string;
+  tags: string[];
+  status?: string;
+}
+
+// Purchase関連の型を定義
+interface PurchaseItem {
+  id: string;
+  title: string;
+  price: number;
+  icon?: string;
+  category?: string;
+}
+
+interface Purchase {
+  id: string;
+  purchasedAt: string;
+  total: number;
+  items: PurchaseItem[];
+}
+
+// Review型を定義
+interface Review {
+  id: string;
+  userId: string;
+  userName: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  toolId: string;
+  verified: boolean;
+  helpful: number;
+}
+
+type ActiveTab = 'overview' | 'tools' | 'purchases' | 'reviews';
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<{name: string; email: string} | null>(null);
-  const [submittedTools, setSubmittedTools] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [stats, setStats] = useState({
-    totalSales: 0,
-    totalEarnings: 0,
-    approvedTools: 0,
-    pendingTools: 0
-  });
-  const [activeTab, setActiveTab] = useState<'overview' | 'tools' | 'sales' | 'analytics'>('overview');
+  const { data: session } = useSession()
+  const router = useRouter()
+  const [pendingTools, setPendingTools] = useState<Tool[]>([])
+  const [purchases, setPurchases] = useState<Purchase[]>([])
+  const [receivedReviews, setReceivedReviews] = useState<Review[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('overview')
 
   useEffect(() => {
-    loadUserData();
-    loadSubmittedTools();
-    loadOrders();
-  }, []);
-
-  const loadUserData = () => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
+    if (session) {
+      loadData()
+      loadReceivedReviews()
     }
-  };
+  }, [session])
 
-  const loadSubmittedTools = () => {
-    const tools = JSON.parse(localStorage.getItem('submittedTools') || '[]');
-    setSubmittedTools(tools);
-    
-    // 統計計算
-    const approved = tools.filter((tool: Product) => tool.status === 'approved').length;
-    const pending = tools.filter((tool: Product) => tool.status === 'pending').length;
-    
-    setStats(prev => ({
-      ...prev,
-      approvedTools: approved,
-      pendingTools: pending
-    }));
-  };
+  const loadData = (): void => {
+    try {
+      // 出品したツールを読み込み
+      const tools: Tool[] = JSON.parse(localStorage.getItem('pendingTools') || '[]')
+      const userTools = tools.filter((tool: Tool) => tool.creator === session?.user?.name)
+      setPendingTools(userTools)
 
-  const loadOrders = () => {
-    const orderData = JSON.parse(localStorage.getItem('orders') || '[]');
-    setOrders(orderData);
-    
-    // 売上統計計算
-    const totalSales = orderData.length;
-    const totalEarnings = orderData.reduce((sum: number, order: Order) => sum + order.total, 0);
-    
-    setStats(prev => ({
-      ...prev,
-      totalSales,
-      totalEarnings
-    }));
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">承認済み</span>;
-      case 'pending':
-        return <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">審査中</span>;
-      case 'rejected':
-        return <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs">却下</span>;
-      default:
-        return <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs">不明</span>;
+      // 購入履歴を読み込み
+      const purchaseHistory: Purchase[] = JSON.parse(localStorage.getItem('purchases') || '[]')
+      setPurchases(purchaseHistory)
+    } catch (error) {
+      console.error('データ読み込みエラー:', error)
+    } finally {
+      setLoading(false)
     }
-  };
+  }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ja-JP');
-  };
+  const loadReceivedReviews = (): void => {
+    try {
+      const allReviews: Review[] = JSON.parse(localStorage.getItem('reviews') || '[]')
+      const allTools: Tool[] = JSON.parse(localStorage.getItem('pendingTools') || '[]')
+      const approvedTools: Tool[] = JSON.parse(localStorage.getItem('approvedTools') || '[]')
+      
+      // 自分のツールを特定
+      const myTools = [...allTools, ...approvedTools].filter((tool: Tool) => 
+        tool.creator === session?.user?.name
+      )
+      const myToolIds = myTools.map((tool: Tool) => tool.id.toString())
+      
+      // 自分のツールに対するレビューを取得
+      const myReviews = allReviews.filter((review: Review) => 
+        myToolIds.includes(review.toolId)
+      )
+      
+      setReceivedReviews(myReviews)
+    } catch (error) {
+      console.error('レビュー読み込みエラー:', error)
+    }
+  }
 
-  const TabButton = ({ tab, label, icon }: { tab: string; label: string; icon: string }) => (
-    <button
-      onClick={() => setActiveTab(tab as any)}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-        activeTab === tab
-          ? 'bg-blue-600 text-white'
-          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-      }`}
-    >
-      <span>{icon}</span>
-      {label}
-    </button>
-  );
+  const deleteTool = (toolId: string): void => {
+    if (confirm('このツールを削除しますか？')) {
+      try {
+        const tools: Tool[] = JSON.parse(localStorage.getItem('pendingTools') || '[]')
+        const updatedTools = tools.filter((tool: Tool) => tool.id !== toolId)
+        localStorage.setItem('pendingTools', JSON.stringify(updatedTools))
+        loadData()
+        alert('ツールを削除しました')
+      } catch (error) {
+        console.error('削除エラー:', error)
+        alert('削除に失敗しました')
+      }
+    }
+  }
 
-  if (!user) {
+  // 統計データの計算
+  const totalRevenue = pendingTools.reduce((sum: number, tool: Tool) => sum + (tool.price * 0), 0) // 実際の売上はここで計算
+  const totalSales = 0 // 実際の販売数
+  const averageRating = receivedReviews.length > 0 
+    ? receivedReviews.reduce((sum: number, review: Review) => sum + review.rating, 0) / receivedReviews.length
+    : 0
+
+  if (!session) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-blue-600 text-white p-4">
-          <div className="max-w-6xl mx-auto flex items-center gap-4">
-            <Link href="/" className="hover:bg-blue-700 px-3 py-2 rounded transition-colors">
-              ← ホームに戻る
-            </Link>
-            <h1 className="text-xl font-bold">📊 ダッシュボード</h1>
-          </div>
-        </header>
-
-        <main className="max-w-4xl mx-auto p-6">
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <div className="text-4xl mb-4">🔒</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">ログインが必要です</h2>
-            <p className="text-gray-600 mb-6">ダッシュボードにアクセスするにはログインしてください。</p>
-            <Link
-              href="/login"
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              ログインページへ
-            </Link>
-          </div>
-        </main>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">🔒 ログインが必要です</h1>
+          <p className="text-gray-600 mb-6">
+            ダッシュボードにアクセスするには、まずログインしてください。
+          </p>
+          <Link 
+            href="/login"
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            ログインする
+          </Link>
+        </div>
       </div>
-    );
+    )
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-blue-600 text-white p-4">
-        <div className="max-w-6xl mx-auto flex items-center gap-4">
-          <Link href="/" className="hover:bg-blue-700 px-3 py-2 rounded transition-colors">
-            ← ホームに戻る
+      {/* ヘッダー */}
+      <header className="bg-blue-600 text-white p-4 shadow-lg">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <Link href="/" className="text-2xl font-bold hover:text-blue-200 transition-colors">
+            🤖 AI Marketplace
           </Link>
-          <h1 className="text-xl font-bold">📊 ダッシュボード</h1>
+          <div className="flex items-center gap-4">
+            <span className="hidden md:block">こんにちは、{session.user?.name}さん</span>
+            <Link href="/" className="bg-blue-500 px-4 py-2 rounded hover:bg-blue-400 transition-colors">
+              ホームに戻る
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-6">
-        {/* ユーザー情報 */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-blue-600 font-bold text-xl">
-                {user.name.charAt(0)}
-              </span>
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">
-                おかえりなさい、{user.name}さん
-              </h2>
-              <p className="text-gray-600">{user.email}</p>
-            </div>
-          </div>
+      {/* メインコンテンツ */}
+      <main className="max-w-7xl mx-auto p-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">📊 ダッシュボード</h1>
+          <p className="text-gray-600">あなたの出品状況と売上を確認できます</p>
         </div>
 
         {/* タブナビゲーション */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <TabButton tab="overview" label="概要" icon="📊" />
-          <TabButton tab="tools" label="出品ツール" icon="🛠️" />
-          <TabButton tab="sales" label="売上" icon="💰" />
-          <TabButton tab="analytics" label="分析" icon="📈" />
+        <div className="mb-8">
+          <div className="border-b border-gray-200">
+            <nav className="flex space-x-8">
+              {[
+                { id: 'overview' as ActiveTab, label: '概要', icon: TrendingUp },
+                { id: 'tools' as ActiveTab, label: '出品ツール', icon: Package },
+                { id: 'purchases' as ActiveTab, label: '購入履歴', icon: CreditCard },
+                { id: 'reviews' as ActiveTab, label: '受信レビュー', icon: Star }
+              ].map(tab => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                      activeTab === tab.id
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon size={16} />
+                    {tab.label}
+                    {tab.id === 'reviews' && receivedReviews.length > 0 && (
+                      <span className="bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">
+                        {receivedReviews.length}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
         </div>
 
-        {/* 概要タブ */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* 統計カード */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <div className="text-3xl mb-2">💰</div>
-                <h3 className="text-lg font-bold text-gray-800 mb-1">総売上</h3>
-                <p className="text-2xl font-bold text-green-600">
-                  ¥{stats.totalEarnings.toLocaleString()}
-                </p>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <div className="text-3xl mb-2">📦</div>
-                <h3 className="text-lg font-bold text-gray-800 mb-1">販売数</h3>
-                <p className="text-2xl font-bold text-blue-600">{stats.totalSales}件</p>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <div className="text-3xl mb-2">✅</div>
-                <h3 className="text-lg font-bold text-gray-800 mb-1">承認済みツール</h3>
-                <p className="text-2xl font-bold text-purple-600">{stats.approvedTools}個</p>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <div className="text-3xl mb-2">⏳</div>
-                <h3 className="text-lg font-bold text-gray-800 mb-1">審査中ツール</h3>
-                <p className="text-2xl font-bold text-orange-600">{stats.pendingTools}個</p>
-              </div>
-            </div>
-
-            {/* クイックアクション */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">🚀 クイックアクション</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Link
-                  href="/sell"
-                  className="bg-blue-600 text-white p-4 rounded-lg hover:bg-blue-700 transition-colors text-center"
-                >
-                  <div className="text-2xl mb-2">🛠️</div>
-                  <div className="font-bold">新しいツールを出品</div>
-                </Link>
-                
-                <button className="bg-green-600 text-white p-4 rounded-lg hover:bg-green-700 transition-colors text-center">
-                  <div className="text-2xl mb-2">📊</div>
-                  <div className="font-bold">売上レポート作成</div>
-                </button>
-                
-                <button className="bg-purple-600 text-white p-4 rounded-lg hover:bg-purple-700 transition-colors text-center">
-                  <div className="text-2xl mb-2">💡</div>
-                  <div className="font-bold">改善提案を確認</div>
-                </button>
-              </div>
-            </div>
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <div className="text-gray-600">データを読み込み中...</div>
           </div>
-        )}
-
-        {/* 出品ツールタブ */}
-        {activeTab === 'tools' && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-800">🛠️ 出品ツール一覧</h3>
-              <Link
-                href="/sell"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                新規出品
-              </Link>
-            </div>
-
-            {submittedTools.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-4">📦</div>
-                <h4 className="text-lg font-bold text-gray-600 mb-2">出品ツールがありません</h4>
-                <p className="text-gray-500 mb-4">最初のAIツールを出品してみませんか？</p>
-                <Link
-                  href="/sell"
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  出品する
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {submittedTools.map((tool) => (
-                  <div key={tool.id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-2xl">{tool.icon || '🤖'}</span>
-                          <h4 className="text-lg font-bold text-gray-800">{tool.title}</h4>
-                          {getStatusBadge(tool.status || 'pending')}
-                        </div>
-                        <p className="text-gray-600 text-sm mb-2 line-clamp-2">{tool.description}</p>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span>カテゴリ: {tool.category}</span>
-                          <span>価格: ¥{tool.price?.toLocaleString()}</span>
-                          <span>出品日: {formatDate(tool.createdAt)}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-200 transition-colors">
-                          編集
-                        </button>
-                        <button className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm hover:bg-red-200 transition-colors">
-                          削除
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 売上タブ */}
-        {activeTab === 'sales' && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-xl font-bold text-gray-800 mb-6">💰 売上履歴</h3>
-            
-            {orders.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-4">💸</div>
-                <h4 className="text-lg font-bold text-gray-600 mb-2">売上履歴がありません</h4>
-                <p className="text-gray-500">まだ購入されたツールがありません。</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {orders.map((order) => (
-                  <div key={order.id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start">
+        ) : (
+          <>
+            {/* 概要タブ */}
+            {activeTab === 'overview' && (
+              <div className="space-y-8">
+                {/* 統計カード */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <div className="bg-white rounded-lg shadow-md p-6">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="font-bold text-gray-800">注文 #{order.id}</h4>
-                        <p className="text-gray-600 text-sm">
-                          購入者: {order.customerInfo.name} ({order.customerInfo.email})
-                        </p>
-                        <p className="text-gray-500 text-sm">
-                          注文日: {formatDate(order.createdAt)}
-                        </p>
+                        <p className="text-sm font-medium text-gray-600">出品中のツール</p>
+                        <p className="text-3xl font-bold text-blue-600">{pendingTools.length}</p>
                       </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-green-600">
-                          ¥{order.total.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          手数料込み
-                        </div>
-                      </div>
+                      <Package className="h-8 w-8 text-blue-500" />
                     </div>
                   </div>
-                ))}
+                  <div className="bg-white rounded-lg shadow-md p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">総売上</p>
+                        <p className="text-3xl font-bold text-green-600">¥{totalRevenue.toLocaleString()}</p>
+                      </div>
+                      <TrendingUp className="h-8 w-8 text-green-500" />
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-md p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">購入履歴</p>
+                        <p className="text-3xl font-bold text-purple-600">{purchases.length}</p>
+                      </div>
+                      <CreditCard className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-md p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">平均評価</p>
+                        <p className="text-3xl font-bold text-yellow-600">
+                          {averageRating > 0 ? averageRating.toFixed(1) : '-'}
+                        </p>
+                      </div>
+                      <Star className="h-8 w-8 text-yellow-500" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* クイックアクション */}
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Plus className="h-5 w-5" />
+                    クイックアクション
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Link
+                      href="/sell"
+                      className="bg-blue-600 text-white p-4 rounded-lg hover:bg-blue-700 transition-colors text-center"
+                    >
+                      <Package className="h-8 w-8 mx-auto mb-2" />
+                      新しいツールを出品
+                    </Link>
+                    <button className="bg-green-600 text-white p-4 rounded-lg hover:bg-green-700 transition-colors text-center">
+                      <TrendingUp className="h-8 w-8 mx-auto mb-2" />
+                      売上レポート
+                    </button>
+                    <Link
+                      href="/"
+                      className="bg-purple-600 text-white p-4 rounded-lg hover:bg-purple-700 transition-colors text-center"
+                    >
+                      <Eye className="h-8 w-8 mx-auto mb-2" />
+                      ツールを探す
+                    </Link>
+                  </div>
+                </div>
+
+                {/* 最近の活動 */}
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    最近の活動
+                  </h2>
+                  <div className="space-y-4">
+                    {pendingTools.length === 0 && purchases.length === 0 && receivedReviews.length === 0 ? (
+                      <p className="text-gray-600 text-center py-8">まだ活動履歴がありません</p>
+                    ) : (
+                      <>
+                        {pendingTools.slice(0, 3).map((tool: Tool) => (
+                          <div key={tool.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <Package className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium">「{tool.title}」を出品申請</p>
+                              <p className="text-sm text-gray-600">
+                                {new Date(tool.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">
+                              審査待ち
+                            </span>
+                          </div>
+                        ))}
+                        {purchases.slice(0, 2).map((purchase: Purchase) => (
+                          <div key={purchase.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                              <CreditCard className="h-5 w-5 text-green-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium">{purchase.items.length}個のツールを購入</p>
+                              <p className="text-sm text-gray-600">
+                                {new Date(purchase.purchasedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <span className="font-bold text-green-600">
+                              ¥{purchase.total.toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                        {receivedReviews.slice(0, 2).map((review: Review) => (
+                          <div key={review.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+                              <Star className="h-5 w-5 text-yellow-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium">新しいレビューを受信</p>
+                              <p className="text-sm text-gray-600">
+                                {review.userName}さんから {review.rating}つ星評価
+                              </p>
+                            </div>
+                            <span className="text-sm text-gray-500">
+                              {new Date(review.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* 分析タブ */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-xl font-bold text-gray-800 mb-6">📈 分析データ</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-bold text-gray-800 mb-4">月別売上推移</h4>
-                  <div className="bg-gray-50 rounded-lg p-4 h-32 flex items-center justify-center">
-                    <span className="text-gray-500">グラフエリア（今後実装予定）</span>
-                  </div>
+            {/* 出品ツールタブ */}
+            {activeTab === 'tools' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-2xl font-bold text-gray-800">出品したツール</h2>
+                  <Link
+                    href="/sell"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    新規出品
+                  </Link>
                 </div>
-                
-                <div>
-                  <h4 className="font-bold text-gray-800 mb-4">カテゴリ別売上</h4>
-                  <div className="bg-gray-50 rounded-lg p-4 h-32 flex items-center justify-center">
-                    <span className="text-gray-500">グラフエリア（今後実装予定）</span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h4 className="font-bold text-gray-800 mb-4">📊 詳細統計</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-sm text-blue-600 font-medium">平均注文金額</div>
-                  <div className="text-xl font-bold text-blue-800">
-                    ¥{stats.totalSales > 0 ? Math.round(stats.totalEarnings / stats.totalSales).toLocaleString() : 0}
+                {pendingTools.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                    <Package className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-800 mb-2">まだツールを出品していません</h3>
+                    <p className="text-gray-600 mb-6">
+                      あなたが開発したAIツールを出品して、収益を得ましょう
+                    </p>
+                    <Link
+                      href="/sell"
+                      className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      初回出品する
+                    </Link>
                   </div>
-                </div>
-                
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <div className="text-sm text-green-600 font-medium">承認率</div>
-                  <div className="text-xl font-bold text-green-800">
-                    {submittedTools.length > 0 
-                      ? Math.round((stats.approvedTools / submittedTools.length) * 100) 
-                      : 0}%
+                ) : (
+                  <div className="grid grid-cols-1 gap-6">
+                    {pendingTools.map((tool: Tool) => (
+                      <div key={tool.id} className="bg-white rounded-lg shadow-md p-6">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className="text-xl font-bold text-gray-800">{tool.title}</h3>
+                              <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-sm">
+                                審査待ち
+                              </span>
+                            </div>
+                            <p className="text-gray-600 mb-3">{tool.description}</p>
+                            <div className="flex items-center gap-4">
+                              <span className="text-2xl font-bold text-blue-600">¥{tool.price.toLocaleString()}</span>
+                              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
+                                {tool.category}
+                              </span>
+                              <span className="text-sm text-gray-500">
+                                出品日: {new Date(tool.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button 
+                              onClick={() => deleteTool(tool.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <h4 className="font-medium text-gray-700 mb-1">タグ</h4>
+                            <div className="flex flex-wrap gap-1">
+                              {tool.tags && tool.tags.map((tag: string, index: number) => (
+                                <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-gray-700 mb-1">エンドポイント</h4>
+                            <code className="bg-gray-100 px-2 py-1 rounded text-xs break-all">
+                              {tool.endpointUrl}
+                            </code>
+                          </div>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <div className="grid grid-cols-3 gap-4 text-center">
+                            <div>
+                              <p className="text-2xl font-bold text-blue-600">0</p>
+                              <p className="text-sm text-gray-600">販売数</p>
+                            </div>
+                            <div>
+                              <p className="text-2xl font-bold text-green-600">¥0</p>
+                              <p className="text-sm text-gray-600">売上</p>
+                            </div>
+                            <div>
+                              <p className="text-2xl font-bold text-yellow-600">-</p>
+                              <p className="text-sm text-gray-600">評価</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                
-                <div className="bg-purple-50 p-4 rounded-lg">
-                  <div className="text-sm text-purple-600 font-medium">今月の売上</div>
-                  <div className="text-xl font-bold text-purple-800">
-                    ¥{Math.floor(stats.totalEarnings * 0.7).toLocaleString()}
-                  </div>
-                </div>
+                )}
               </div>
-            </div>
-          </div>
+            )}
+
+            {/* 購入履歴タブ */}
+            {activeTab === 'purchases' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800">購入履歴</h2>
+
+                {purchases.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                    <CreditCard className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-800 mb-2">まだ購入履歴がありません</h3>
+                    <p className="text-gray-600 mb-6">
+                      便利なAIツールを見つけて購入してみましょう
+                    </p>
+                    <Link
+                      href="/"
+                      className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      ツールを探す
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {purchases.map((purchase: Purchase) => (
+                      <div key={purchase.id} className="bg-white rounded-lg shadow-md p-6">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="text-lg font-bold text-gray-800">注文 #{purchase.id}</h3>
+                            <p className="text-sm text-gray-600">
+                              購入日: {new Date(purchase.purchasedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-2xl font-bold text-green-600">
+                              ¥{purchase.total.toLocaleString()}
+                            </span>
+                            <p className="text-sm text-gray-600">{purchase.items.length}個のツール</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {purchase.items.map((item: PurchaseItem) => (
+                            <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl">{item.icon || '🤖'}</span>
+                                <div>
+                                  <h4 className="font-medium">{item.title}</h4>
+                                  <p className="text-sm text-gray-600">{item.category || 'AI ツール'}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-bold text-blue-600">¥{item.price.toLocaleString()}</span>
+                                <div className="flex gap-2 mt-1">
+                                  <Link
+                                    href={`/tools/${item.id}`}
+                                    className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
+                                  >
+                                    利用開始
+                                  </Link>
+                                  <button className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-700">
+                                    レビュー
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 受信レビュータブ */}
+            {activeTab === 'reviews' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800">あなたのツールに対するレビュー</h2>
+                
+                {receivedReviews.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                    <Star className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-800 mb-2">まだレビューがありません</h3>
+                    <p className="text-gray-600">
+                      ツールが購入されてレビューが投稿されると、ここに表示されます
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {receivedReviews.map((review: Review) => {
+                      const allTools = [...pendingTools];
+                      const approvedTools: Tool[] = JSON.parse(localStorage.getItem('approvedTools') || '[]');
+                      const tool = [...allTools, ...approvedTools].find((t: Tool) => 
+                        t.id.toString() === review.toolId
+                      );
+                      return (
+                        <div key={review.id} className="bg-white rounded-lg shadow-md p-6">
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                              <User className="w-6 h-6 text-blue-600" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="font-medium">{review.userName}</span>
+                                <div className="flex">
+                                  {[1, 2, 3, 4, 5].map((star: number) => (
+                                    <Star
+                                      key={star}
+                                      className={`w-4 h-4 ${
+                                        star <= review.rating
+                                          ? 'text-yellow-400 fill-current'
+                                          : 'text-gray-300'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                                <span className="text-sm text-gray-500">
+                                  {new Date(review.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className="mb-2">
+                                <span className="text-sm text-blue-600 font-medium">
+                                  「{tool?.title || '不明なツール'}」への評価
+                                </span>
+                              </div>
+                              <p className="text-gray-700">{review.comment}</p>
+                              <div className="mt-3 flex gap-2">
+                                <button className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
+                                  返信
+                                </button>
+                                <Link
+                                  href={`/tools/${review.toolId}`}
+                                  className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700"
+                                >
+                                  ツール詳細
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
-  );
+  )
 }
