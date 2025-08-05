@@ -1,164 +1,159 @@
-// components/SearchFilter.tsx
 'use client'
 import React, { useState } from 'react';
-import { Search, Filter, X } from 'lucide-react';
-import { FilterState } from '@/lib/types';
+import { SearchFilters } from '@/lib/types';
 
 interface SearchFilterProps {
-  onSearch: (filters: FilterState) => void;
-  totalProducts: number;
-  filteredCount: number;
+  onFilterChange: (filters: SearchFilters) => void;
+  categories: string[];
+  priceRange: { min: number; max: number };
 }
 
-export default function SearchFilter({ onSearch, totalProducts, filteredCount }: SearchFilterProps) {
-  const [filters, setFilters] = useState<FilterState>({
-    searchTerm: '',
+export default function SearchFilter({ onFilterChange, categories, priceRange }: SearchFilterProps) {
+  const [filters, setFilters] = useState<SearchFilters>({
     category: 'all',
-    priceRange: 'all',
+    priceRange: { min: priceRange.min, max: priceRange.max },
     rating: 0,
-    sortBy: 'default'
+    sortBy: 'date',
+    sortOrder: 'desc'
   });
 
-  const categories = [
-    { value: 'all', label: 'すべて' },
-    { value: '文章作成', label: '文章作成' },
-    { value: 'データ分析', label: 'データ分析' },
-    { value: 'デザイン', label: 'デザイン' },
-    { value: 'チャットボット', label: 'チャットボット' },
-    { value: '教育', label: '教育' },
-    { value: 'SEO', label: 'SEO' }
-  ];
-
-  const priceRanges = [
-    { value: 'all', label: 'すべて' },
-    { value: '0-1000', label: '¥1,000以下' },
-    { value: '1000-3000', label: '¥1,000-3,000' },
-    { value: '3000-5000', label: '¥3,000-5,000' },
-    { value: '5000+', label: '¥5,000以上' }
-  ];
-
-  const sortOptions = [
-    { value: 'default', label: 'おすすめ順' },
-    { value: 'newest', label: '新着順' },
-    { value: 'price-low', label: '価格: 安い順' },
-    { value: 'price-high', label: '価格: 高い順' },
-    { value: 'rating', label: '評価順' },
-    { value: 'popular', label: '人気順' }
-  ];
-
-  const handleFilterChange = (newFilters: Partial<FilterState>): void => {
+  const handleFilterChange = (newFilters: Partial<SearchFilters>) => {
     const updatedFilters = { ...filters, ...newFilters };
     setFilters(updatedFilters);
-    onSearch(updatedFilters);
+    onFilterChange(updatedFilters);
   };
 
-  const clearFilters = (): void => {
-    const defaultFilters: FilterState = {
-      searchTerm: '',
+  const resetFilters = () => {
+    const defaultFilters: SearchFilters = {
       category: 'all',
-      priceRange: 'all',
+      priceRange: { min: priceRange.min, max: priceRange.max },
       rating: 0,
-      sortBy: 'default'
+      sortBy: 'date',
+      sortOrder: 'desc'
     };
     setFilters(defaultFilters);
-    onSearch(defaultFilters);
+    onFilterChange(defaultFilters);
   };
 
-  const hasActiveFilters = filters.searchTerm || filters.category !== 'all' || 
-                          filters.priceRange !== 'all' || filters.rating > 0;
-
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-      {/* 基本検索 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-        {/* 検索語句 */}
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="ツールを検索..."
-            value={filters.searchTerm}
-            onChange={(e) => handleFilterChange({ searchTerm: e.target.value })}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+    <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div className="flex flex-wrap gap-4 items-center">
+        {/* カテゴリフィルター */}
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 mb-1">カテゴリ</label>
+          <select
+            value={filters.category}
+            onChange={(e) => handleFilterChange({ category: e.target.value })}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">すべて</option>
+            {categories.map(category => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
         </div>
-
-        {/* カテゴリ */}
-        <select
-          value={filters.category}
-          onChange={(e) => handleFilterChange({ category: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          {categories.map((cat) => (
-            <option key={cat.value} value={cat.value}>
-              {cat.label}
-            </option>
-          ))}
-        </select>
 
         {/* 価格範囲 */}
-        <select
-          value={filters.priceRange}
-          onChange={(e) => handleFilterChange({ priceRange: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          {priceRanges.map((range) => (
-            <option key={range.value} value={range.value}>
-              {range.label}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 mb-1">価格範囲</label>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              value={filters.priceRange?.min || 0}
+              onChange={(e) => handleFilterChange({ 
+                priceRange: { 
+                  min: Number(e.target.value), 
+                  max: filters.priceRange?.max || priceRange.max 
+                } 
+              })}
+              className="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm"
+              min="0"
+            />
+            <span className="text-gray-500">〜</span>
+            <input
+              type="number"
+              value={filters.priceRange?.max || priceRange.max}
+              onChange={(e) => handleFilterChange({ 
+                priceRange: { 
+                  min: filters.priceRange?.min || 0, 
+                  max: Number(e.target.value) 
+                } 
+              })}
+              className="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm"
+              min="0"
+            />
+          </div>
+        </div>
+
+        {/* 評価フィルター */}
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 mb-1">評価</label>
+          <select
+            value={filters.rating}
+            onChange={(e) => handleFilterChange({ rating: Number(e.target.value) })}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value={0}>すべて</option>
+            <option value={4}>★4以上</option>
+            <option value={3}>★3以上</option>
+            <option value={2}>★2以上</option>
+            <option value={1}>★1以上</option>
+          </select>
+        </div>
 
         {/* ソート */}
-        <select
-          value={filters.sortBy}
-          onChange={(e) => handleFilterChange({ sortBy: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          {sortOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* 評価フィルター */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          最低評価
-        </label>
-        <div className="flex gap-2">
-          {[0, 1, 2, 3, 4, 5].map((rating) => (
-            <button
-              key={rating}
-              onClick={() => handleFilterChange({ rating })}
-              className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                filters.rating === rating
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 mb-1">並び順</label>
+          <div className="flex gap-2">
+            <select
+              value={filters.sortBy}
+              onChange={(e) => handleFilterChange({ sortBy: e.target.value as any })}
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              {rating === 0 ? 'すべて' : `${rating}★以上`}
-            </button>
-          ))}
+              <option value="date">投稿日</option>
+              <option value="price">価格</option>
+              <option value="rating">評価</option>
+              <option value="popularity">人気</option>
+            </select>
+            <select
+              value={filters.sortOrder}
+              onChange={(e) => handleFilterChange({ sortOrder: e.target.value as 'asc' | 'desc' })}
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="desc">降順</option>
+              <option value="asc">昇順</option>
+            </select>
+          </div>
+        </div>
+
+        {/* リセットボタン */}
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-transparent mb-1">.</label>
+          <button
+            onClick={resetFilters}
+            className="bg-gray-500 text-white px-4 py-2 rounded-md text-sm hover:bg-gray-600 transition-colors"
+          >
+            リセット
+          </button>
         </div>
       </div>
 
-      {/* 結果表示とクリア */}
-      <div className="flex justify-between items-center pt-4 border-t">
-        <div className="text-sm text-gray-600">
-          {totalProducts}件中 {filteredCount}件を表示
-        </div>
-        
-        {hasActiveFilters && (
-          <button
-            onClick={clearFilters}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
-          >
-            <X className="h-4 w-4" />
-            フィルターをクリア
-          </button>
+      {/* アクティブなフィルター表示 */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {filters.category !== 'all' && (
+          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+            カテゴリ: {filters.category}
+          </span>
+        )}
+        {filters.rating && filters.rating > 0 && (
+          <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">
+            ★{filters.rating}以上
+          </span>
+        )}
+        {(filters.priceRange?.min !== priceRange.min || filters.priceRange?.max !== priceRange.max) && (
+          <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+            ¥{filters.priceRange?.min?.toLocaleString()} - ¥{filters.priceRange?.max?.toLocaleString()}
+          </span>
         )}
       </div>
     </div>

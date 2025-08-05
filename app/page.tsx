@@ -1,28 +1,19 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-
-interface Product {
-  id: string | number
-  title: string
-  description: string
-  price: number
-  category: string
-  icon: string
-  rating: number
-  reviewCount: number
-  tags: string[]
-  createdAt: string
-  creator?: string
-}
+import { Product, SearchFilters } from '@/lib/types';
+import { filterProducts, searchProducts, getUniqueCategories, getPriceRange } from '@/lib/searchUtils';
+import SearchFilter from '@/components/SearchFilter';
 
 export default function HomePage() {
   const [cart, setCart] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [showCart, setShowCart] = useState<boolean>(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // 静的なサンプル商品データ
   const defaultProducts: Product[] = [
@@ -106,6 +97,10 @@ export default function HomePage() {
     loadCartFromStorage();
   }, []);
 
+  useEffect(() => {
+    applyFiltersAndSearch();
+  }, [allProducts, searchQuery]);
+
   const loadProducts = async (): Promise<void> => {
     try {
       setAllProducts(defaultProducts);
@@ -117,7 +112,6 @@ export default function HomePage() {
     }
   };
 
-  // ローカルストレージからユーザー情報を復元
   const loadUserFromStorage = () => {
     try {
       const savedUser = localStorage.getItem('user');
@@ -130,7 +124,6 @@ export default function HomePage() {
     }
   };
 
-  // ローカルストレージからカートを復元
   const loadCartFromStorage = () => {
     try {
       const savedCart = localStorage.getItem('cart');
@@ -142,14 +135,23 @@ export default function HomePage() {
     }
   };
 
-  // ログイン関数
+  const applyFiltersAndSearch = () => {
+    let products = searchProducts(allProducts, searchQuery);
+    setFilteredProducts(products);
+  };
+
+  const handleFilterChange = (filters: SearchFilters) => {
+    let products = searchProducts(allProducts, searchQuery);
+    products = filterProducts(products, filters);
+    setFilteredProducts(products);
+  };
+
   const login = (userData: {name: string; email: string}) => {
     setUser(userData);
     setIsLoggedIn(true);
     localStorage.setItem('user', JSON.stringify(userData));
   };
 
-  // ログアウト関数
   const logout = () => {
     setUser(null);
     setIsLoggedIn(false);
@@ -174,7 +176,6 @@ export default function HomePage() {
     const updatedCart = cart.filter((item: Product) => item.id !== productId);
     setCart(updatedCart);
     localStorage.setItem('cart', JSON.stringify(updatedCart));
-    alert('商品をカートから削除しました');
   };
 
   const clearCart = (): void => {
@@ -192,7 +193,7 @@ export default function HomePage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="spinner mx-auto mb-4"></div>
           <div className="text-xl">データを読み込み中...</div>
         </div>
       </div>
@@ -208,7 +209,6 @@ export default function HomePage() {
             🤖 AI Marketplace Pro
           </Link>
           
-          {/* ナビゲーション */}
           <nav className="hidden md:flex space-x-6">
             <Link href="/" className="hover:bg-blue-700 px-3 py-2 rounded transition-colors">
               ホーム
@@ -222,6 +222,17 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center gap-4">
+            {/* 検索バー */}
+            <div className="hidden md:block">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ツールを検索..."
+                className="px-3 py-2 rounded-lg text-gray-800 w-64"
+              />
+            </div>
+
             {/* カート */}
             <div className="relative">
               <button
@@ -249,19 +260,12 @@ export default function HomePage() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => {
-                  const name = prompt('お名前を入力してください:');
-                  const email = prompt('メールアドレスを入力してください:');
-                  if (name && email) {
-                    login({name, email});
-                    alert(`ようこそ、${name}さん！`);
-                  }
-                }}
+              <Link
+                href="/login"
                 className="bg-white text-blue-600 px-4 py-2 rounded hover:bg-gray-100 transition-colors font-medium"
               >
                 ログイン
-              </button>
+              </Link>
             )}
           </div>
         </div>
@@ -320,9 +324,12 @@ export default function HomePage() {
                     <span className="font-bold">合計:</span>
                     <span className="text-lg font-bold text-blue-600">¥{cartTotal.toLocaleString()}</span>
                   </div>
-                  <button className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors flex items-center justify-center gap-2">
+                  <Link
+                    href="/success"
+                    className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                  >
                     💳 購入手続きへ
-                  </button>
+                  </Link>
                 </div>
               </>
             )}
@@ -335,7 +342,7 @@ export default function HomePage() {
         {/* ヒーローセクション */}
         <div className="text-center mb-8">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">
-            🚀 AIツールを売買しよう
+            🚀 AIツールマーケットプレイス
           </h1>
           <p className="text-gray-600 text-lg mb-8">
             便利なAIツールを見つけて購入、または自分のツールを販売
@@ -346,89 +353,118 @@ export default function HomePage() {
               👋 ようこそ、{user?.name}さん！
             </div>
           )}
+
+          {/* モバイル検索 */}
+          <div className="md:hidden mb-6">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ツールを検索..."
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 text-gray-800"
+            />
+          </div>
         </div>
+
+        {/* 検索フィルター */}
+        <SearchFilter
+          onFilterChange={handleFilterChange}
+          categories={getUniqueCategories(allProducts)}
+          priceRange={getPriceRange(allProducts)}
+        />
 
         {/* 商品一覧 */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-800">
-              AIツール ({allProducts.length}件)
+              AIツール ({filteredProducts.length}件)
             </h2>
             <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
               📡 Vercel運営中
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {allProducts.map((product: Product) => {
-              const isInCart = cart.some((item: Product) => item.id === product.id);
-              return (
-                <div key={product.id} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 p-6 border border-gray-100">
-                  <div className="text-4xl mb-4 text-center bg-gray-50 rounded-lg py-8">
-                    {product.icon}
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <h3 className="text-xl font-bold text-gray-800">
-                      {product.title}
-                    </h3>
+          {filteredProducts.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">🔍</div>
+              <h3 className="text-xl font-bold text-gray-600 mb-2">検索結果が見つかりません</h3>
+              <p className="text-gray-500">検索条件を変更してお試しください</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProducts.map((product: Product) => {
+                const isInCart = cart.some((item: Product) => item.id === product.id);
+                return (
+                  <div key={product.id} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 p-6 border border-gray-100 card-hover">
+                    <div className="text-4xl mb-4 text-center bg-gray-50 rounded-lg py-8">
+                      {product.icon}
+                    </div>
                     
-                    <p className="text-gray-600 text-sm">{product.description}</p>
-                    
-                    <div className="flex flex-wrap gap-2">
-                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                        {product.category}
-                      </span>
-                      {product.tags.slice(0, 2).map((tag: string, index: number) => (
-                        <span key={index} className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
-                          {tag}
+                    <div className="space-y-3">
+                      <h3 className="text-xl font-bold text-gray-800 line-clamp-2">
+                        {product.title}
+                      </h3>
+                      
+                      <p className="text-gray-600 text-sm line-clamp-3">{product.description}</p>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                          {product.category}
                         </span>
-                      ))}
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <span className="text-yellow-400">
-                        {'★'.repeat(Math.floor(product.rating))}{'☆'.repeat(5-Math.floor(product.rating))}
-                      </span>
-                      <span className="text-sm text-gray-600">
-                        {product.rating.toFixed(1)} ({product.reviewCount})
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between items-center pt-3 border-t gap-2">
-                      <span className="text-2xl font-bold text-blue-600">
-                        ¥{product.price.toLocaleString()}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => addToCart(product)}
-                          disabled={isInCart}
-                          className={`px-3 py-2 rounded-lg font-medium transition-all duration-200 ${
-                            isInCart 
-                              ? 'bg-green-500 text-white cursor-not-allowed' 
-                              : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
-                          }`}
-                        >
-                          {isInCart ? '✓ 追加済み' : 'カートに追加'}
-                        </button>
-                        <button className="px-3 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
-                          詳細
-                        </button>
+                        {product.tags.slice(0, 2).map((tag: string, index: number) => (
+                          <span key={index} className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <span className="text-yellow-400">
+                          {'★'.repeat(Math.floor(product.rating))}{'☆'.repeat(5-Math.floor(product.rating))}
+                        </span>
+                        <span className="text-sm text-gray-600">
+                          {product.rating.toFixed(1)} ({product.reviewCount})
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center pt-3 border-t gap-2">
+                        <span className="text-2xl font-bold text-blue-600">
+                          ¥{product.price.toLocaleString()}
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => addToCart(product)}
+                            disabled={isInCart}
+                            className={`px-3 py-2 rounded-lg font-medium transition-all duration-200 btn-hover-lift ${
+                              isInCart 
+                                ? 'bg-green-500 text-white cursor-not-allowed' 
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                          >
+                            {isInCart ? '✓ 追加済み' : 'カートに追加'}
+                          </button>
+                          <Link
+                            href={`/tools/${product.id}`}
+                            className="px-3 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                          >
+                            詳細
+                          </Link>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* フッター */}
         <footer className="text-center py-8 border-t">
           <div className="bg-blue-100 border border-blue-400 text-blue-700 px-6 py-4 rounded-lg inline-block">
-            <strong>🎉 AI Marketplace Pro 運営中！</strong>
+            <strong>🎉 AI Marketplace Pro 完全稼働中！</strong>
             <br />
-            Vercelで安定稼働・カート機能・ユーザー管理完備
+            検索・フィルター・カート・ユーザー管理完備
           </div>
         </footer>
       </main>

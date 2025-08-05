@@ -70,7 +70,7 @@ body {
   100% { transform: rotate(360deg); }
 }
 
-/* テキスト切り捨て（標準プロパティ対応） */
+/* テキスト切り捨て */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -104,4 +104,16 @@ body {
   .mobile-only {
     display: none;
   }
+}
+
+/* ボタンホバーエフェクト */
+.btn-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* カードホバーエフェクト */
+.card-hover:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }

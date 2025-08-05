@@ -1,124 +1,104 @@
-export interface Product {
-  id: number | string
-  title: string
-  description: string
-  price: number
-  category: string
-  tags?: string[]
-  rating?: number
-  reviewCount?: number
-  icon: string
-  createdAt?: string
-}
+import { Product, SearchFilters } from './types';
 
-export interface FilterState {
-  searchTerm: string
-  category: string
-  priceRange: string
-  rating: number
-  sortBy: string
-}
-
-export function filterProducts(products: Product[], filters: FilterState): Product[] {
-  let filtered = [...products]
-
-  // テキスト検索
-  if (filters.searchTerm) {
-    const searchLower = filters.searchTerm.toLowerCase()
-    filtered = filtered.filter(product => 
-      product.title.toLowerCase().includes(searchLower) ||
-      product.description.toLowerCase().includes(searchLower) ||
-      product.category.toLowerCase().includes(searchLower) ||
-      (product.tags && product.tags.some(tag => 
-        tag.toLowerCase().includes(searchLower)
-      ))
-    )
-  }
+export function filterProducts(products: Product[], filters: SearchFilters): Product[] {
+  let filtered = [...products];
 
   // カテゴリフィルター
-  if (filters.category !== 'all') {
-    filtered = filtered.filter(product => product.category === filters.category)
+  if (filters.category && filters.category !== 'all') {
+    filtered = filtered.filter(product => 
+      product.category.toLowerCase() === filters.category?.toLowerCase()
+    );
   }
 
-  // 価格フィルター
-  if (filters.priceRange !== 'all') {
-    const [min, max] = filters.priceRange.split('-').map(Number)
-    if (filters.priceRange.includes('+')) {
-      const minPrice = Number(filters.priceRange.replace('+', ''))
-      filtered = filtered.filter(product => product.price >= minPrice)
-    } else if (max) {
-      filtered = filtered.filter(product => 
-        product.price >= min && product.price <= max
-      )
-    } else {
-      filtered = filtered.filter(product => product.price <= min)
-    }
+  // 価格範囲フィルター
+  if (filters.priceRange) {
+    filtered = filtered.filter(product => 
+      product.price >= filters.priceRange!.min && 
+      product.price <= filters.priceRange!.max
+    );
   }
 
   // 評価フィルター
-  if (filters.rating > 0) {
-    filtered = filtered.filter(product => 
-      (product.rating || 0) >= filters.rating
-    )
+  if (filters.rating) {
+    filtered = filtered.filter(product => product.rating >= filters.rating!);
   }
 
   // ソート
-  switch (filters.sortBy) {
-    case 'price-low':
-      filtered.sort((a, b) => a.price - b.price)
-      break
-    case 'price-high':
-      filtered.sort((a, b) => b.price - a.price)
-      break
-    case 'rating':
-      filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0))
-      break
-    case 'newest':
-      filtered.sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0).getTime()
-        const dateB = new Date(b.createdAt || 0).getTime()
-        return dateB - dateA
-      })
-      break
-    case 'popular':
-      filtered.sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0))
-      break
-    default:
-      // デフォルトソート（評価と人気度の組み合わせ）
-      filtered.sort((a, b) => {
-        const scoreA = (a.rating || 0) * 0.7 + (a.reviewCount || 0) * 0.3
-        const scoreB = (b.rating || 0) * 0.7 + (b.reviewCount || 0) * 0.3
-        return scoreB - scoreA
-      })
+  if (filters.sortBy) {
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
+
+      switch (filters.sortBy) {
+        case 'price':
+          aValue = a.price;
+          bValue = b.price;
+          break;
+        case 'rating':
+          aValue = a.rating;
+          bValue = b.rating;
+          break;
+        case 'date':
+          aValue = new Date(a.createdAt);
+          bValue = new Date(b.createdAt);
+          break;
+        case 'popularity':
+          aValue = a.reviewCount;
+          bValue = b.reviewCount;
+          break;
+        default:
+          return 0;
+      }
+
+      if (filters.sortOrder === 'desc') {
+        return bValue > aValue ? 1 : bValue < aValue ? -1 : 0;
+      } else {
+        return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+      }
+    });
   }
 
-  return filtered
+  return filtered;
 }
 
-export function getSearchSuggestions(products: Product[], query: string): string[] {
-  if (!query || query.length < 2) return []
+export function searchProducts(products: Product[], query: string): Product[] {
+  if (!query.trim()) return products;
 
-  const suggestions = new Set<string>()
-  const queryLower = query.toLowerCase()
+  const searchTerm = query.toLowerCase();
+  
+  return products.filter(product => 
+    product.title.toLowerCase().includes(searchTerm) ||
+    product.description.toLowerCase().includes(searchTerm) ||
+    product.tags.some(tag => tag.toLowerCase().includes(searchTerm)) ||
+    product.category.toLowerCase().includes(searchTerm)
+  );
+}
 
+export function getUniqueCategories(products: Product[]): string[] {
+  const categories = products.map(product => product.category);
+  return [...new Set(categories)].sort();
+}
+
+export function getPriceRange(products: Product[]): { min: number; max: number } {
+  if (products.length === 0) return { min: 0, max: 10000 };
+  
+  const prices = products.map(product => product.price);
+  return {
+    min: Math.min(...prices),
+    max: Math.max(...prices)
+  };
+}
+
+export function getPopularTags(products: Product[], limit: number = 10): string[] {
+  const tagCounts: { [key: string]: number } = {};
+  
   products.forEach(product => {
-    // タイトルから抽出
-    if (product.title.toLowerCase().includes(queryLower)) {
-      suggestions.add(product.title)
-    }
+    product.tags.forEach(tag => {
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    });
+  });
 
-    // カテゴリから抽出
-    if (product.category.toLowerCase().includes(queryLower)) {
-      suggestions.add(product.category)
-    }
-
-    // タグから抽出
-    product.tags?.forEach(tag => {
-      if (tag.toLowerCase().includes(queryLower)) {
-        suggestions.add(tag)
-      }
-    })
-  })
-
-  return Array.from(suggestions).slice(0, 5)
+  return Object.entries(tagCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, limit)
+    .map(([tag]) => tag);
 }

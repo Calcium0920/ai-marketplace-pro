@@ -1,32 +1,63 @@
-// lib/types.ts
 export interface Product {
-  id: number | string;
+  id: string | number;
   title: string;
   description: string;
   price: number;
   category: string;
-  tags?: string[];
-  rating?: number;
-  reviewCount?: number;
   icon: string;
-  createdAt?: string;
-  creator?: string;
-}
-
-export interface FilterState {
-  searchTerm: string;
-  category: string;
-  priceRange: string;
   rating: number;
-  sortBy: string;
+  reviewCount: number;
+  tags: string[];
+  createdAt: string;
+  creator?: string;
+  endpointUrl?: string;
+  status?: 'pending' | 'approved' | 'rejected';
 }
 
-export type CategoryIconMap = {
-  [key: string]: string;
-  '文章作成': string;
-  'データ分析': string;
-  'デザイン': string;
-  'チャットボット': string;
-  '教育': string;
-  'SEO': string;
-};
+export interface Review {
+  id: string;
+  userId: string;
+  userName: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  toolId: string;
+  verified: boolean;
+  helpful: number;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'user' | 'admin';
+  createdAt: string;
+}
+
+export interface CartItem extends Product {
+  quantity?: number;
+}
+
+export interface Order {
+  id: string;
+  userId: string;
+  products: Product[];
+  total: number;
+  status: 'pending' | 'completed' | 'cancelled';
+  createdAt: string;
+  customerInfo: {
+    name: string;
+    email: string;
+  };
+}
+
+export interface SearchFilters {
+  category?: string;
+  priceRange?: {
+    min: number;
+    max: number;
+  };
+  rating?: number;
+  sortBy?: 'price' | 'rating' | 'date' | 'popularity';
+  sortOrder?: 'asc' | 'desc';
+}

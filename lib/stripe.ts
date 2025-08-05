@@ -1,8 +1,9 @@
 import Stripe from 'stripe';
+import { Product } from './types';
 
 // Stripe インスタンスを作成
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-07-30.basil',  // ← 最新バージョンに変更
+  apiVersion: '2025-07-30.basil',  // 最新のAPIバージョンに修正
   typescript: true,
 });
 
@@ -43,9 +44,6 @@ export async function createCheckoutSession(
       cancel_url: cancelUrl,
       customer_email: customerEmail,
       billing_address_collection: 'required',
-      shipping_address_collection: {
-        allowed_countries: ['JP'],
-      },
       payment_intent_data: {
         metadata: {
           products: JSON.stringify(products.map(p => ({ id: p.id, name: p.name }))),
@@ -63,58 +61,6 @@ export async function createCheckoutSession(
   }
 }
 
-// サブスクリプション作成
-export async function createSubscription(
-  customerId: string,
-  priceId: string
-): Promise<Stripe.Subscription> {
-  try {
-    const subscription = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [{ price: priceId }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: { save_default_payment_method: 'on_subscription' },
-      expand: ['latest_invoice.payment_intent'],
-    });
-
-    return subscription;
-  } catch (error) {
-    console.error('Stripe subscription creation error:', error);
-    throw new Error('サブスクリプションの作成に失敗しました');
-  }
-}
-
-// 顧客作成
-export async function createCustomer(
-  email: string,
-  name?: string
-): Promise<Stripe.Customer> {
-  try {
-    const customer = await stripe.customers.create({
-      email,
-      name,
-    });
-
-    return customer;
-  } catch (error) {
-    console.error('Stripe customer creation error:', error);
-    throw new Error('顧客の作成に失敗しました');
-  }
-}
-
-// 支払い確認
-export async function retrievePaymentIntent(
-  paymentIntentId: string
-): Promise<Stripe.PaymentIntent> {
-  try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    return paymentIntent;
-  } catch (error) {
-    console.error('Stripe payment intent retrieval error:', error);
-    throw new Error('支払い情報の取得に失敗しました');
-  }
-}
-
 // Webhook検証
 export function verifyWebhookSignature(
   payload: string,
@@ -129,47 +75,7 @@ export function verifyWebhookSignature(
   }
 }
 
-// 価格情報取得
-export async function getPrice(priceId: string): Promise<Stripe.Price> {
-  try {
-    const price = await stripe.prices.retrieve(priceId);
-    return price;
-  } catch (error) {
-    console.error('Stripe price retrieval error:', error);
-    throw new Error('価格情報の取得に失敗しました');
-  }
-}
-
-// 商品一覧取得
-export async function listProducts(): Promise<Stripe.Product[]> {
-  try {
-    const products = await stripe.products.list({ active: true });
-    return products.data;
-  } catch (error) {
-    console.error('Stripe products list error:', error);
-    throw new Error('商品一覧の取得に失敗しました');
-  }
-}
-
-// 返金処理
-export async function createRefund(
-  paymentIntentId: string,
-  amount?: number
-): Promise<Stripe.Refund> {
-  try {
-    const refund = await stripe.refunds.create({
-      payment_intent: paymentIntentId,
-      amount,
-    });
-
-    return refund;
-  } catch (error) {
-    console.error('Stripe refund creation error:', error);
-    throw new Error('返金処理に失敗しました');
-  }
-}
-
-// ユーティリティ関数
+// 価格フォーマット
 export const formatCurrency = (amount: number, currency: string = 'JPY'): string => {
   return new Intl.NumberFormat('ja-JP', {
     style: 'currency',
@@ -178,28 +84,11 @@ export const formatCurrency = (amount: number, currency: string = 'JPY'): string
 };
 
 export const formatStripeAmount = (amount: number): number => {
-  return Math.round(amount * 100); // 円をセント（最小単位）に変換
+  return Math.round(amount * 100);
 };
 
 export const formatDisplayAmount = (stripeAmount: number): number => {
-  return stripeAmount / 100; // セントを円に変換
+  return stripeAmount / 100;
 };
-
-// エラーハンドリング
-export class StripeError extends Error {
-  constructor(message: string, public code?: string) {
-    super(message);
-    this.name = 'StripeError';
-  }
-}
-
-// 環境変数チェック
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY環境変数が設定されていません');
-}
-
-if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
-  console.warn('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY環境変数が設定されていません');
-}
 
 export default stripe;
